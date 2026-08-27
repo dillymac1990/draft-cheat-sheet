@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Upload, ArrowRight, Trash2 } from "lucide-react";
+import { Upload, ArrowRight, Trash2, RefreshCw, ChevronDown, ChevronUp, AlertTriangle } from "lucide-react";
 import { parseRankingsCsv } from "@/lib/parseCsv";
 import { loadJSON, saveJSON, clearAll } from "@/lib/storage";
 import { POS_COLOR } from "@/lib/posColors";
@@ -12,31 +12,50 @@ export default function SetupPage() {
   const fileInputRef = useRef(null);
 
   const [leagueId, setLeagueId] = useState("");
-  const [csvText, setCsvText] = useState("");
   const [rows, setRows] = useState([]);
+
+  // Rankings normally come from the published Google Sheet, fetched fresh
+  // on every visit — manual CSV paste/upload is a fallback for when that
+  // fetch fails or the user wants to test a different list.
+  const [sheetStatus, setSheetStatus] = useState("loading"); // loading | loaded | error
+  const [sheetError, setSheetError] = useState("");
+  const [showManual, setShowManual] = useState(false);
+  const [csvText, setCsvText] = useState("");
   const [fileName, setFileName] = useState("");
-  const [error, setError] = useState("");
+  const [manualError, setManualError] = useState("");
 
   useEffect(() => {
     setLeagueId(loadJSON("leagueId", ""));
-    const savedCsv = loadJSON("rankingsCsv", "");
-    if (savedCsv) {
-      setCsvText(savedCsv);
-      setRows(parseRankingsCsv(savedCsv));
-    }
-    setFileName(loadJSON("rankingsFileName", ""));
+    loadFromSheet();
   }, []);
+
+  async function loadFromSheet() {
+    setSheetStatus("loading");
+    setSheetError("");
+    try {
+      const res = await fetch("/api/rankings", { cache: "no-store" });
+      if (!res.ok) throw new Error(`${res.status}`);
+      const csv = await res.text();
+      const parsed = parseRankingsCsv(csv);
+      if (!parsed.length) throw new Error("empty");
+      setRows(parsed);
+      setSheetStatus("loaded");
+    } catch {
+      setSheetStatus("error");
+      setSheetError("Couldn't load your Google Sheet — check it's published to web, or use the manual option below.");
+      setShowManual(true);
+    }
+  }
 
   function handleCsvText(text) {
     setCsvText(text);
-    setError("");
+    setManualError("");
     try {
       const parsed = parseRankingsCsv(text);
       setRows(parsed);
-      if (text.trim() && !parsed.length) setError("Couldn't find any player rows in that CSV.");
+      if (text.trim() && !parsed.length) setManualError("Couldn't find any player rows in that CSV.");
     } catch {
-      setRows([]);
-      setError("Couldn't parse that CSV.");
+      setManualError("Couldn't parse that CSV.");
     }
   }
 
@@ -57,8 +76,6 @@ export default function SetupPage() {
 
   function handleContinue() {
     saveJSON("leagueId", leagueId.trim());
-    saveJSON("rankingsCsv", csvText);
-    saveJSON("rankingsFileName", fileName);
     saveJSON("rankings", rows);
     router.push("/board");
   }
@@ -67,9 +84,9 @@ export default function SetupPage() {
     clearAll();
     setLeagueId("");
     setCsvText("");
-    setRows([]);
     setFileName("");
-    setError("");
+    setManualError("");
+    loadFromSheet();
   }
 
   return (
@@ -77,7 +94,7 @@ export default function SetupPage() {
       <div className="w-full max-w-xl">
         <h1 className="text-2xl font-black text-slate-100">Draft Cheat Sheet</h1>
         <p className="mt-1.5 text-sm text-slate-400">
-          Load your rankings, point it at your Sleeper league, and it'll cross off players live as they're picked.
+          Your rankings, pulled live from Google Sheets, crossed off as picks come in during your Sleeper draft.
         </p>
 
         <section className="mt-8">
@@ -98,59 +115,93 @@ export default function SetupPage() {
         </section>
 
         <section className="mt-6">
-          <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
-            Your Rankings (CSV)
-          </label>
-
-          <div
-            className="border border-dashed border-slate-700 rounded-lg p-4 flex items-center justify-between gap-3 cursor-pointer hover:border-slate-500 transition-colors"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <div className="flex items-center gap-2.5 min-w-0">
-              <Upload size={16} className="text-slate-500 shrink-0" />
-              <span className="text-sm text-slate-300 truncate">{fileName || "Upload a CSV file"}</span>
-            </div>
-            <span className="text-xs text-slate-500 shrink-0">Browse</span>
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Your Rankings</label>
+            <button
+              onClick={loadFromSheet}
+              disabled={sheetStatus === "loading"}
+              className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-300 transition-colors disabled:opacity-50"
+            >
+              <RefreshCw size={12} className={sheetStatus === "loading" ? "animate-spin" : ""} />
+              Refresh
+            </button>
           </div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".csv,text/csv"
-            className="hidden"
-            onChange={(e) => handleFile(e.target.files?.[0])}
-          />
 
-          <p className="text-xs text-slate-600 my-2 text-center">— or paste it below —</p>
+          <div className="border border-slate-800 rounded-lg p-4 bg-slate-900">
+            {sheetStatus === "loading" && <p className="text-sm text-slate-400">Loading from your Google Sheet…</p>}
 
-          <textarea
-            value={csvText}
-            onChange={(e) => {
-              setFileName("");
-              handleCsvText(e.target.value);
-            }}
-            placeholder={"rank,name,pos,team,tier\n1,Ja'Marr Chase,WR,CIN,1\n2,Bijan Robinson,RB,ATL,1\n..."}
-            rows={6}
-            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2.5 text-xs font-mono text-slate-300 placeholder:text-slate-600 focus:outline-none focus:border-slate-500 resize-y"
-          />
-          <p className="mt-1.5 text-xs text-slate-500">
-            Columns: <span className="font-mono text-slate-400">rank, name, pos, team</span>, plus optional{" "}
-            <span className="font-mono text-slate-400">tier, bye</span>. Header row optional.
-          </p>
+            {sheetStatus === "loaded" && (
+              <>
+                <p className="text-sm text-slate-200">Loaded from your Google Sheet</p>
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                  <span className="text-xs text-slate-400 mr-1">{rows.length} players</span>
+                  {Object.entries(posCounts).map(([pos, count]) => (
+                    <span
+                      key={pos}
+                      className="text-[10px] font-bold px-1.5 py-0.5 rounded"
+                      style={{ background: `${POS_COLOR[pos] || "#64748b"}30`, color: POS_COLOR[pos] || "#94a3b8" }}
+                    >
+                      {pos} {count}
+                    </span>
+                  ))}
+                </div>
+              </>
+            )}
 
-          {error && <p className="mt-2 text-xs text-rose-400">{error}</p>}
+            {sheetStatus === "error" && (
+              <div className="flex items-start gap-2 text-amber-300">
+                <AlertTriangle size={15} className="shrink-0 mt-0.5" />
+                <p className="text-sm">{sheetError}</p>
+              </div>
+            )}
+          </div>
 
-          {rows.length > 0 && (
-            <div className="mt-3 flex flex-wrap items-center gap-1.5">
-              <span className="text-xs text-slate-400 mr-1">{rows.length} players loaded</span>
-              {Object.entries(posCounts).map(([pos, count]) => (
-                <span
-                  key={pos}
-                  className="text-[10px] font-bold px-1.5 py-0.5 rounded"
-                  style={{ background: `${POS_COLOR[pos] || "#64748b"}30`, color: POS_COLOR[pos] || "#94a3b8" }}
-                >
-                  {pos} {count}
-                </span>
-              ))}
+          <button
+            onClick={() => setShowManual((v) => !v)}
+            className="mt-2 flex items-center gap-1 text-xs text-slate-500 hover:text-slate-300 transition-colors"
+          >
+            {showManual ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+            Use a different list instead
+          </button>
+
+          {showManual && (
+            <div className="mt-3">
+              <div
+                className="border border-dashed border-slate-700 rounded-lg p-4 flex items-center justify-between gap-3 cursor-pointer hover:border-slate-500 transition-colors"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <Upload size={16} className="text-slate-500 shrink-0" />
+                  <span className="text-sm text-slate-300 truncate">{fileName || "Upload a CSV file"}</span>
+                </div>
+                <span className="text-xs text-slate-500 shrink-0">Browse</span>
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv,text/csv"
+                className="hidden"
+                onChange={(e) => handleFile(e.target.files?.[0])}
+              />
+
+              <p className="text-xs text-slate-600 my-2 text-center">— or paste it below —</p>
+
+              <textarea
+                value={csvText}
+                onChange={(e) => {
+                  setFileName("");
+                  handleCsvText(e.target.value);
+                }}
+                placeholder={"rank,name,pos,team,tier\n1,Ja'Marr Chase,WR,CIN,1\n2,Bijan Robinson,RB,ATL,1\n..."}
+                rows={6}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2.5 text-xs font-mono text-slate-300 placeholder:text-slate-600 focus:outline-none focus:border-slate-500 resize-y"
+              />
+              <p className="mt-1.5 text-xs text-slate-500">
+                Columns: <span className="font-mono text-slate-400">rank, name, pos, team</span>, plus optional{" "}
+                <span className="font-mono text-slate-400">tier, bye</span>. Header row optional.
+              </p>
+
+              {manualError && <p className="mt-2 text-xs text-rose-400">{manualError}</p>}
             </div>
           )}
         </section>
