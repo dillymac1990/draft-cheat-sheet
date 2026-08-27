@@ -12,6 +12,7 @@ import {
   fetchPicks,
   fetchLeagueUsers,
   fetchLeagueRosters,
+  fetchSleeperRanks,
   buildRosterIndex,
   rosterIdForPick,
   pickRosterId,
@@ -31,6 +32,7 @@ export default function BoardPage() {
   const [myRosterId, setMyRosterId] = useState("");
   const [manualOverrides, setManualOverrides] = useState(() => new Set());
   const [targets, setTargets] = useState(() => new Set());
+  const [sleeperRanks, setSleeperRanks] = useState({});
   const [loadError, setLoadError] = useState("");
 
   const [search, setSearch] = useState("");
@@ -46,6 +48,16 @@ export default function BoardPage() {
     setMyRosterId(loadJSON("myRosterId", ""));
     setManualOverrides(new Set(loadJSON("manualOverrides", [])));
     setTargets(new Set(loadJSON("targets", [])));
+  }, []);
+
+  // --- Sleeper's own overall player rank (not true ADP — Sleeper doesn't
+  // publish that — but the closest signal for "is the field valuing this
+  // player higher or lower than my board"). One-shot fetch; doesn't change
+  // during a draft session. ---
+  useEffect(() => {
+    fetchSleeperRanks()
+      .then(setSleeperRanks)
+      .catch(() => {}); // non-critical — column just shows "—" if this fails
   }, []);
 
   // --- Resolve league/draft id -> draft id, users/rosters. Accepts either
@@ -346,6 +358,12 @@ export default function BoardPage() {
             </label>
           </div>
 
+          <p className="text-[11px] text-slate-600 mb-2">
+            <span className="text-rose-400 font-semibold">Sleeper</span> column red = the field ranks them earlier than
+            you do (heads up) · <span className="text-emerald-400 font-semibold">green</span> = later than you do
+            (possible value). Sleeper's own overall rank, not true ADP.
+          </p>
+
           <div className="border border-slate-800 rounded-lg overflow-hidden">
             <div className="max-h-[70vh] overflow-y-auto">
               <table className="w-full text-sm">
@@ -355,6 +373,9 @@ export default function BoardPage() {
                     <th className="text-left font-semibold px-3 py-2 w-12">#</th>
                     <th className="text-left font-semibold px-3 py-2">Player</th>
                     <th className="text-left font-semibold px-3 py-2 w-16">Tier</th>
+                    <th className="text-left font-semibold px-3 py-2 w-16" title="Sleeper's overall player rank — not true ADP, but the closest signal Sleeper exposes for how the field values a player relative to your board.">
+                      Sleeper
+                    </th>
                     <th className="text-right font-semibold px-3 py-2">Status</th>
                   </tr>
                 </thead>
@@ -366,7 +387,7 @@ export default function BoardPage() {
                       <Fragment key={key}>
                         {showTierHeader && (
                           <tr className="bg-slate-800/60">
-                            <td colSpan={5} className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                            <td colSpan={6} className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">
                               Tier {r.tier}
                               <span className="ml-1.5 text-slate-600 font-normal normal-case">
                                 · {tierCounts[r.tier]} player{tierCounts[r.tier] === 1 ? "" : "s"}
@@ -379,6 +400,7 @@ export default function BoardPage() {
                           draftedInfo={draftedInfo.get(key)}
                           manual={manualOverrides.has(key)}
                           isTarget={targets.has(key)}
+                          sleeperRank={sleeperRanks[key]}
                           isMine={
                             draftedInfo.get(key)?.rosterId != null && String(draftedInfo.get(key).rosterId) === String(myRosterId)
                           }
@@ -390,7 +412,7 @@ export default function BoardPage() {
                   })}
                   {filtered.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="text-center text-slate-600 text-xs py-8">
+                      <td colSpan={6} className="text-center text-slate-600 text-xs py-8">
                         No players match.
                       </td>
                     </tr>
@@ -492,7 +514,7 @@ function StatusPill({ draft, draftComplete }) {
   return <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-1 rounded-md ${style}`}>{label}</span>;
 }
 
-function PlayerRow({ row, draftedInfo, manual, isTarget, isMine, onToggle, onToggleTarget }) {
+function PlayerRow({ row, draftedInfo, manual, isTarget, sleeperRank, isMine, onToggle, onToggleTarget }) {
   const drafted = Boolean(draftedInfo || manual);
   const bgClass = drafted
     ? isMine
@@ -528,6 +550,19 @@ function PlayerRow({ row, draftedInfo, manual, isTarget, isMine, onToggle, onTog
         </div>
       </td>
       <td className="px-3 py-2 text-slate-500">{row.tier ?? ""}</td>
+      <td className="px-3 py-2 font-mono">
+        {sleeperRank != null ? (
+          <span
+            className={
+              sleeperRank < row.rank ? "text-rose-400" : sleeperRank > row.rank ? "text-emerald-400" : "text-slate-500"
+            }
+          >
+            {sleeperRank}
+          </span>
+        ) : (
+          <span className="text-slate-700">—</span>
+        )}
+      </td>
       <td className="px-3 py-2 text-right">
         {drafted ? (
           <span className={`text-[10px] font-semibold ${isMine ? "text-emerald-400" : "text-slate-500"}`}>
