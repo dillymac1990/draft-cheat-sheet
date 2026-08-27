@@ -5,8 +5,49 @@ async function get(path) {
   return res.json();
 }
 
+async function tryGet(path) {
+  try {
+    return await get(path);
+  } catch {
+    return null;
+  }
+}
+
+// Sleeper league/draft URLs both end in a long numeric id (17-19 digits) —
+// pull that out regardless of URL shape so the input field accepts a bare
+// id, a league URL, or a draft URL interchangeably.
+export function extractSleeperId(input) {
+  const match = String(input || "").match(/\d{15,}/);
+  return match ? match[0] : "";
+}
+
 export async function fetchLeague(leagueId) {
   return get(`league/${leagueId}`);
+}
+
+// Accepts either a league id or a draft id (a solo/mock draft has its own
+// draft_id that isn't listed under any league's /drafts endpoint, so it
+// can't be "resolved" the normal way — it has to be hit directly). Tries
+// league first since that's the common case, falls back to treating the
+// id as a draft id. Returns { leagueId, draftId } — leagueId is null for a
+// standalone draft with no league behind it (team names then fall back to
+// "Team {rosterId}").
+export async function resolveLeagueAndDraft(rawId) {
+  const id = extractSleeperId(rawId);
+  if (!id) throw new Error("No Sleeper id found in that input");
+
+  const league = await tryGet(`league/${id}`);
+  if (league?.name) {
+    const draftId = await resolveDraftId(id);
+    if (draftId) return { leagueId: id, draftId };
+  }
+
+  const draft = await tryGet(`draft/${id}`);
+  if (draft?.draft_id) {
+    return { leagueId: draft.metadata?.league_id || null, draftId: draft.draft_id };
+  }
+
+  throw new Error("Couldn't find a league or draft with that id");
 }
 
 // A league can have multiple drafts across seasons; the most relevant one

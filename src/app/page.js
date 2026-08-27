@@ -99,18 +99,18 @@ export default function SetupPage() {
 
         <section className="mt-8">
           <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
-            Sleeper League ID
+            Sleeper League or Draft
           </label>
           <input
             type="text"
-            inputMode="numeric"
             value={leagueId}
-            onChange={(e) => setLeagueId(e.target.value.replace(/\D/g, ""))}
-            placeholder="e.g. 1185408325105057792"
+            onChange={(e) => setLeagueId(e.target.value)}
+            placeholder="League ID, draft ID, or a sleeper.com URL"
             className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-slate-500"
           />
           <p className="mt-1.5 text-xs text-slate-500">
-            Found in your league's URL: sleeper.com/leagues/<span className="text-slate-400">1185408325105057792</span>/team
+            Paste your league's URL (sleeper.com/leagues/<span className="text-slate-400">…</span>) for its live draft,
+            or a mock/practice draft's URL (sleeper.com/draft/nfl/<span className="text-slate-400">…</span>) — either works.
           </p>
         </section>
 

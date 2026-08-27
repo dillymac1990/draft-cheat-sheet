@@ -7,7 +7,7 @@ import { loadJSON, saveJSON } from "@/lib/storage";
 import { buildRankingsIndex, matchPick, rowKey } from "@/lib/matchPlayer";
 import { POS_COLOR, POS_ORDER } from "@/lib/posColors";
 import {
-  resolveDraftId,
+  resolveLeagueAndDraft,
   fetchDraft,
   fetchPicks,
   fetchLeagueUsers,
@@ -21,7 +21,7 @@ const DRAFT_POLL_MS = 20000;
 
 export default function BoardPage() {
   const [rankings, setRankings] = useState(null); // null = not yet loaded from storage
-  const [leagueId, setLeagueId] = useState("");
+  const [savedId, setSavedId] = useState(""); // raw league/draft id or URL from setup
 
   const [draftId, setDraftId] = useState(null);
   const [draft, setDraft] = useState(null);
@@ -36,42 +36,44 @@ export default function BoardPage() {
   const [hideDrafted, setHideDrafted] = useState(false);
   const [showUnmatched, setShowUnmatched] = useState(false);
 
-  // --- Load saved rankings + league from setup page ---
+  // --- Load saved rankings + league/draft id from setup page ---
   useEffect(() => {
     const savedRankings = loadJSON("rankings", []);
-    const savedLeagueId = loadJSON("leagueId", "");
     setRankings(savedRankings);
-    setLeagueId(savedLeagueId);
+    setSavedId(loadJSON("leagueId", ""));
     setMyRosterId(loadJSON("myRosterId", ""));
     setManualOverrides(new Set(loadJSON("manualOverrides", [])));
   }, []);
 
-  // --- Resolve league -> draft, users/rosters (once leagueId is known) ---
+  // --- Resolve league/draft id -> draft id, users/rosters. Accepts either
+  // a real league (whose current draft gets auto-resolved) or a standalone
+  // draft id directly — a solo/mock draft has no discoverable league, so
+  // it must be hit as a draft id. Team names fall back to "Team {id}"
+  // when there's no league behind the draft to pull real names from. ---
   useEffect(() => {
-    if (!leagueId) return;
+    if (!savedId) return;
     let cancelled = false;
     (async () => {
       try {
-        const [dId, users, rosters] = await Promise.all([
-          resolveDraftId(leagueId),
-          fetchLeagueUsers(leagueId),
-          fetchLeagueRosters(leagueId),
-        ]);
+        const { leagueId, draftId: dId } = await resolveLeagueAndDraft(savedId);
         if (cancelled) return;
         if (!dId) {
-          setLoadError("No draft found for this league yet.");
+          setLoadError("No draft found for that league yet.");
           return;
         }
         setDraftId(dId);
-        setRosterIndex(buildRosterIndex(users, rosters));
+        if (leagueId) {
+          const [users, rosters] = await Promise.all([fetchLeagueUsers(leagueId), fetchLeagueRosters(leagueId)]);
+          if (!cancelled) setRosterIndex(buildRosterIndex(users, rosters));
+        }
       } catch {
-        if (!cancelled) setLoadError("Couldn't reach Sleeper. Check the league ID and try again.");
+        if (!cancelled) setLoadError("Couldn't reach Sleeper. Check the league/draft id and try again.");
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [leagueId]);
+  }, [savedId]);
 
   // --- Poll draft metadata (status, settings) ---
   useEffect(() => {
@@ -206,7 +208,7 @@ export default function BoardPage() {
     return <main className="flex-1 flex items-center justify-center text-sm text-slate-500">Loading…</main>;
   }
 
-  if (!rankings.length || !leagueId) {
+  if (!rankings.length || !savedId) {
     return (
       <main className="flex-1 flex flex-col items-center justify-center gap-3 text-center px-4">
         <p className="text-sm text-slate-400">No rankings or league loaded yet.</p>
