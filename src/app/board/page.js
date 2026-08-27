@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Settings, ChevronDown, ChevronUp, AlertTriangle } from "lucide-react";
+import { Settings, ChevronDown, ChevronUp, AlertTriangle, Star } from "lucide-react";
 import { loadJSON, saveJSON } from "@/lib/storage";
 import { buildRankingsIndex, matchPick, rowKey } from "@/lib/matchPlayer";
 import { POS_COLOR, POS_ORDER } from "@/lib/posColors";
@@ -30,6 +30,7 @@ export default function BoardPage() {
   const [rosterIndex, setRosterIndex] = useState({});
   const [myRosterId, setMyRosterId] = useState("");
   const [manualOverrides, setManualOverrides] = useState(() => new Set());
+  const [targets, setTargets] = useState(() => new Set());
   const [loadError, setLoadError] = useState("");
 
   const [search, setSearch] = useState("");
@@ -44,6 +45,7 @@ export default function BoardPage() {
     setSavedId(loadJSON("leagueId", ""));
     setMyRosterId(loadJSON("myRosterId", ""));
     setManualOverrides(new Set(loadJSON("manualOverrides", [])));
+    setTargets(new Set(loadJSON("targets", [])));
   }, []);
 
   // --- Resolve league/draft id -> draft id, users/rosters. Accepts either
@@ -150,6 +152,16 @@ export default function BoardPage() {
     });
   }
 
+  function toggleTarget(key) {
+    setTargets((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      saveJSON("targets", [...next]);
+      return next;
+    });
+  }
+
   function handleMyTeam(rosterId) {
     setMyRosterId(rosterId);
     saveJSON("myRosterId", rosterId);
@@ -174,6 +186,17 @@ export default function BoardPage() {
       return true;
     });
   }, [rankings, posFilter, hideDrafted, search, draftedInfo, manualOverrides]);
+
+  // Counts within the currently filtered view, so "Tier 4 · 6 players"
+  // reflects e.g. just the RBs in tier 4 when the RB filter is active.
+  const tierCounts = useMemo(() => {
+    const counts = {};
+    for (const r of filtered) {
+      if (r.tier == null) continue;
+      counts[r.tier] = (counts[r.tier] || 0) + 1;
+    }
+    return counts;
+  }, [filtered]);
 
   const bestAvailable = useMemo(() => {
     const out = {};
@@ -328,6 +351,7 @@ export default function BoardPage() {
               <table className="w-full text-sm">
                 <thead className="sticky top-0 bg-slate-900 text-[10px] uppercase tracking-wide text-slate-500 border-b border-slate-800">
                   <tr>
+                    <th className="font-semibold px-2 py-2 w-8"></th>
                     <th className="text-left font-semibold px-3 py-2 w-12">#</th>
                     <th className="text-left font-semibold px-3 py-2">Player</th>
                     <th className="text-left font-semibold px-3 py-2 w-16">Tier</th>
@@ -335,22 +359,38 @@ export default function BoardPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((r) => (
-                    <PlayerRow
-                      key={rowKey(r)}
-                      row={r}
-                      draftedInfo={draftedInfo.get(rowKey(r))}
-                      manual={manualOverrides.has(rowKey(r))}
-                      isMine={
-                        draftedInfo.get(rowKey(r))?.rosterId != null &&
-                        String(draftedInfo.get(rowKey(r)).rosterId) === String(myRosterId)
-                      }
-                      onToggle={() => toggleManual(rowKey(r))}
-                    />
-                  ))}
+                  {filtered.map((r, i) => {
+                    const key = rowKey(r);
+                    const showTierHeader = r.tier != null && (i === 0 || filtered[i - 1].tier !== r.tier);
+                    return (
+                      <Fragment key={key}>
+                        {showTierHeader && (
+                          <tr className="bg-slate-800/60">
+                            <td colSpan={5} className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                              Tier {r.tier}
+                              <span className="ml-1.5 text-slate-600 font-normal normal-case">
+                                · {tierCounts[r.tier]} player{tierCounts[r.tier] === 1 ? "" : "s"}
+                              </span>
+                            </td>
+                          </tr>
+                        )}
+                        <PlayerRow
+                          row={r}
+                          draftedInfo={draftedInfo.get(key)}
+                          manual={manualOverrides.has(key)}
+                          isTarget={targets.has(key)}
+                          isMine={
+                            draftedInfo.get(key)?.rosterId != null && String(draftedInfo.get(key).rosterId) === String(myRosterId)
+                          }
+                          onToggle={() => toggleManual(key)}
+                          onToggleTarget={() => toggleTarget(key)}
+                        />
+                      </Fragment>
+                    );
+                  })}
                   {filtered.length === 0 && (
                     <tr>
-                      <td colSpan={4} className="text-center text-slate-600 text-xs py-8">
+                      <td colSpan={5} className="text-center text-slate-600 text-xs py-8">
                         No players match.
                       </td>
                     </tr>
@@ -452,15 +492,26 @@ function StatusPill({ draft, draftComplete }) {
   return <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-1 rounded-md ${style}`}>{label}</span>;
 }
 
-function PlayerRow({ row, draftedInfo, manual, isMine, onToggle }) {
+function PlayerRow({ row, draftedInfo, manual, isTarget, isMine, onToggle, onToggleTarget }) {
   const drafted = Boolean(draftedInfo || manual);
+  const bgClass = drafted
+    ? isMine
+      ? "bg-emerald-500/10"
+      : "bg-slate-900/60"
+    : isTarget
+    ? "bg-amber-500/5 hover:bg-amber-500/10"
+    : "hover:bg-slate-900/60";
   return (
-    <tr
-      onClick={onToggle}
-      className={`border-b border-slate-900 cursor-pointer transition-colors ${
-        drafted ? (isMine ? "bg-emerald-500/10" : "bg-slate-900/60") : "hover:bg-slate-900/60"
-      }`}
-    >
+    <tr onClick={onToggle} className={`border-b border-slate-900 cursor-pointer transition-colors ${bgClass}`}>
+      <td className="px-2 py-2 text-center" onClick={(e) => e.stopPropagation()}>
+        <button
+          onClick={onToggleTarget}
+          className="p-1 -m-1"
+          aria-label={isTarget ? "Remove target" : "Mark as target"}
+        >
+          <Star size={14} className={isTarget ? "fill-amber-400 text-amber-400" : "text-slate-700 hover:text-slate-500"} />
+        </button>
+      </td>
       <td className="px-3 py-2 font-mono text-slate-500">{row.rank}</td>
       <td className="px-3 py-2">
         <div className="flex items-center gap-2">
