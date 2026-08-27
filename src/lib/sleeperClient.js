@@ -25,10 +25,10 @@ export async function fetchLeague(leagueId) {
   return get(`league/${leagueId}`);
 }
 
-// {rowKey: search_rank} — our own server route, not the /api/sleeper proxy.
-export async function fetchSleeperRanks() {
-  const res = await fetch("/api/sleeper-ranks", { cache: "no-store" });
-  if (!res.ok) throw new Error(`Sleeper ranks fetch failed: ${res.status}`);
+// {matchKey: adp} — our own server route, not the /api/sleeper proxy.
+export async function fetchAdp() {
+  const res = await fetch("/api/adp", { cache: "no-store" });
+  if (!res.ok) throw new Error(`ADP fetch failed: ${res.status}`);
   return res.json();
 }
 

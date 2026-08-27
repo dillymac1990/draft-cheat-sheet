@@ -4,7 +4,7 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Settings, ChevronDown, ChevronUp, AlertTriangle, Star } from "lucide-react";
 import { loadJSON, saveJSON } from "@/lib/storage";
-import { buildRankingsIndex, matchPick, rowKey } from "@/lib/matchPlayer";
+import { buildRankingsIndex, matchPick, rowKey, matchKey } from "@/lib/matchPlayer";
 import { POS_COLOR, POS_ORDER } from "@/lib/posColors";
 import {
   resolveLeagueAndDraft,
@@ -12,7 +12,7 @@ import {
   fetchPicks,
   fetchLeagueUsers,
   fetchLeagueRosters,
-  fetchSleeperRanks,
+  fetchAdp,
   buildRosterIndex,
   rosterIdForPick,
   pickRosterId,
@@ -32,7 +32,7 @@ export default function BoardPage() {
   const [myRosterId, setMyRosterId] = useState("");
   const [manualOverrides, setManualOverrides] = useState(() => new Set());
   const [targets, setTargets] = useState(() => new Set());
-  const [sleeperRanks, setSleeperRanks] = useState({});
+  const [adpIndex, setAdpIndex] = useState({});
   const [loadError, setLoadError] = useState("");
 
   const [search, setSearch] = useState("");
@@ -50,13 +50,12 @@ export default function BoardPage() {
     setTargets(new Set(loadJSON("targets", [])));
   }, []);
 
-  // --- Sleeper's own overall player rank (not true ADP — Sleeper doesn't
-  // publish that — but the closest signal for "is the field valuing this
-  // player higher or lower than my board"). One-shot fetch; doesn't change
-  // during a draft session. ---
+  // --- Real ADP from FantasyFootballCalculator (Sleeper doesn't publish
+  // its own ADP anywhere accessible outside a logged-in draft room). One-
+  // shot fetch; doesn't change during a draft session. ---
   useEffect(() => {
-    fetchSleeperRanks()
-      .then(setSleeperRanks)
+    fetchAdp()
+      .then(setAdpIndex)
       .catch(() => {}); // non-critical — column just shows "—" if this fails
   }, []);
 
@@ -359,9 +358,9 @@ export default function BoardPage() {
           </div>
 
           <p className="text-[11px] text-slate-600 mb-2">
-            <span className="text-rose-400 font-semibold">Sleeper</span> column red = the field ranks them earlier than
+            <span className="text-rose-400 font-semibold">ADP</span> column red = the field drafts them earlier than
             you do (heads up) · <span className="text-emerald-400 font-semibold">green</span> = later than you do
-            (possible value). Sleeper's own overall rank, not true ADP.
+            (possible value). Real average draft position from FantasyFootballCalculator.
           </p>
 
           <div className="border border-slate-800 rounded-lg overflow-hidden">
@@ -373,8 +372,11 @@ export default function BoardPage() {
                     <th className="text-left font-semibold px-3 py-2 w-12">#</th>
                     <th className="text-left font-semibold px-3 py-2">Player</th>
                     <th className="text-left font-semibold px-3 py-2 w-16">Tier</th>
-                    <th className="text-left font-semibold px-3 py-2 w-16" title="Sleeper's overall player rank — not true ADP, but the closest signal Sleeper exposes for how the field values a player relative to your board.">
-                      Sleeper
+                    <th
+                      className="text-left font-semibold px-3 py-2 w-16"
+                      title="Real average draft position from FantasyFootballCalculator, scoped to this league's format."
+                    >
+                      ADP
                     </th>
                     <th className="text-right font-semibold px-3 py-2">Status</th>
                   </tr>
@@ -400,7 +402,7 @@ export default function BoardPage() {
                           draftedInfo={draftedInfo.get(key)}
                           manual={manualOverrides.has(key)}
                           isTarget={targets.has(key)}
-                          sleeperRank={sleeperRanks[key]}
+                          adp={adpIndex[matchKey(r.name, r.pos, r.team)]}
                           isMine={
                             draftedInfo.get(key)?.rosterId != null && String(draftedInfo.get(key).rosterId) === String(myRosterId)
                           }
@@ -514,7 +516,7 @@ function StatusPill({ draft, draftComplete }) {
   return <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-1 rounded-md ${style}`}>{label}</span>;
 }
 
-function PlayerRow({ row, draftedInfo, manual, isTarget, sleeperRank, isMine, onToggle, onToggleTarget }) {
+function PlayerRow({ row, draftedInfo, manual, isTarget, adp, isMine, onToggle, onToggleTarget }) {
   const drafted = Boolean(draftedInfo || manual);
   const bgClass = drafted
     ? isMine
@@ -551,13 +553,9 @@ function PlayerRow({ row, draftedInfo, manual, isTarget, sleeperRank, isMine, on
       </td>
       <td className="px-3 py-2 text-slate-500">{row.tier ?? ""}</td>
       <td className="px-3 py-2 font-mono">
-        {sleeperRank != null ? (
-          <span
-            className={
-              sleeperRank < row.rank ? "text-rose-400" : sleeperRank > row.rank ? "text-emerald-400" : "text-slate-500"
-            }
-          >
-            {sleeperRank}
+        {adp != null ? (
+          <span className={adp < row.rank ? "text-rose-400" : adp > row.rank ? "text-emerald-400" : "text-slate-500"}>
+            {adp.toFixed(1)}
           </span>
         ) : (
           <span className="text-slate-700">—</span>

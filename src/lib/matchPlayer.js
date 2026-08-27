@@ -63,13 +63,13 @@ function normalizePosForMatch(pos) {
   return p;
 }
 
-// key() used for both the rankings index and Sleeper picks so the same
-// lookup works for both. DEF entries key on team abbreviation; everyone
-// else keys on normalized full name. Position isn't included in the key —
-// name collisions across positions are rare enough not to matter here, and
-// dropping it avoids mismatches when a source mislabels a position (e.g.
-// FLEX-only exports).
-function key(name, pos, team) {
+// Shared identity for the rankings index, Sleeper pick matching, and ADP
+// matching — any source giving a name/pos/team ends up comparable. DEF
+// entries key on team abbreviation; everyone else keys on normalized full
+// name. Position isn't included in the key — name collisions across
+// positions are rare enough not to matter here, and dropping it avoids
+// mismatches when a source mislabels a position (e.g. FLEX-only exports).
+export function matchKey(name, pos, team) {
   if (normalizePosForMatch(pos) === "DEF") return `DEF|${teamAbbr(team || name)}`;
   return `NAME|${normalizeName(name)}`;
 }
@@ -78,7 +78,7 @@ function key(name, pos, team) {
 export function buildRankingsIndex(rows) {
   const index = new Map();
   for (const row of rows) {
-    index.set(key(row.name, row.pos, row.team), row);
+    index.set(matchKey(row.name, row.pos, row.team), row);
   }
   return index;
 }
@@ -101,5 +101,5 @@ export function matchPick(index, pick) {
       ? meta.team || `${meta.first_name || ""} ${meta.last_name || ""}`.trim()
       : `${meta.first_name || ""} ${meta.last_name || ""}`.trim();
   const team = meta.team || pick.player_id || "";
-  return index.get(key(name, pos, team)) || null;
+  return index.get(matchKey(name, pos, team)) || null;
 }
