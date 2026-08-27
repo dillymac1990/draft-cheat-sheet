@@ -14,6 +14,7 @@ import {
   fetchLeagueRosters,
   buildRosterIndex,
   rosterIdForPick,
+  pickRosterId,
 } from "@/lib/sleeperClient";
 
 const PICKS_POLL_MS = 4000;
@@ -126,9 +127,10 @@ export default function BoardPage() {
     for (const pick of picks) {
       if (!pick.player_id) continue;
       const row = matchPick(rankingsIndex, pick);
-      const teamName = rosterIndex[pick.roster_id]?.teamName || `Team ${pick.roster_id}`;
+      const rosterId = pickRosterId(draft, pick);
+      const teamName = rosterIndex[rosterId]?.teamName || `Team ${rosterId}`;
       if (row) {
-        info.set(rowKey(row), { pickNo: pick.pick_no, round: pick.round, rosterId: pick.roster_id, teamName });
+        info.set(rowKey(row), { pickNo: pick.pick_no, round: pick.round, rosterId, teamName });
       } else {
         const meta = pick.metadata || {};
         const name = `${meta.first_name || ""} ${meta.last_name || ""}`.trim() || meta.team || pick.player_id;
@@ -136,7 +138,7 @@ export default function BoardPage() {
       }
     }
     return { draftedInfo: info, unmatched: missed };
-  }, [picks, rankingsIndex, rosterIndex]);
+  }, [picks, rankingsIndex, rosterIndex, draft]);
 
   function toggleManual(key) {
     setManualOverrides((prev) => {
@@ -384,7 +386,8 @@ export default function BoardPage() {
               {recentPicks.map((p) => {
                 const meta = p.metadata || {};
                 const name = `${meta.first_name || ""} ${meta.last_name || ""}`.trim() || meta.team || p.player_id;
-                const teamName = rosterIndex[p.roster_id]?.teamName || `Team ${p.roster_id}`;
+                const rosterId = pickRosterId(draft, p);
+                const teamName = rosterIndex[rosterId]?.teamName || `Team ${rosterId}`;
                 return (
                   <div key={p.pick_no} className="flex items-center justify-between gap-2 text-xs">
                     <div className="min-w-0 flex items-center gap-1.5">
@@ -435,14 +438,17 @@ export default function BoardPage() {
   );
 }
 
+const STATUS_LABEL = { drafting: "Live", paused: "Paused", pre_draft: "Pre-Draft" };
+const STATUS_STYLE = {
+  drafting: "bg-emerald-500/15 text-emerald-400",
+  paused: "bg-amber-500/15 text-amber-400",
+  pre_draft: "bg-amber-500/15 text-amber-400",
+};
+
 function StatusPill({ draft, draftComplete }) {
   if (!draft) return null;
-  const label = draftComplete ? "Complete" : draft.status === "drafting" ? "Live" : "Pre-Draft";
-  const style = draftComplete
-    ? "bg-slate-700/40 text-slate-400"
-    : draft.status === "drafting"
-    ? "bg-emerald-500/15 text-emerald-400"
-    : "bg-amber-500/15 text-amber-400";
+  const label = draftComplete ? "Complete" : STATUS_LABEL[draft.status] || "Pre-Draft";
+  const style = draftComplete ? "bg-slate-700/40 text-slate-400" : STATUS_STYLE[draft.status] || "bg-amber-500/15 text-amber-400";
   return <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-1 rounded-md ${style}`}>{label}</span>;
 }
 

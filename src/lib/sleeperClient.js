@@ -92,6 +92,14 @@ export function buildRosterIndex(users, rosters) {
   return index;
 }
 
+// A completed pick's own roster_id (mock/solo drafts leave this null —
+// only draft_slot is populated — while real league drafts set it
+// directly), so fall back to the same slot->roster mapping used for
+// upcoming picks.
+export function pickRosterId(draft, pick) {
+  return pick.roster_id ?? draft?.slot_to_roster_id?.[pick.draft_slot] ?? null;
+}
+
 // Standard snake-draft "who's on the clock" for a given overall pick number
 // (1-indexed) that hasn't happened yet. `draft.slot_to_roster_id` maps
 // draft slot -> roster; odd rounds go slot 1..N, even rounds reverse.
