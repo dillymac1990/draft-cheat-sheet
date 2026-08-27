@@ -83,10 +83,13 @@ export function buildRankingsIndex(rows) {
   return index;
 }
 
-// Stable identity for a ranking row within a single loaded CSV — used as a
-// Map/Set key for drafted-status tracking (auto-matched + manual overrides).
+// Stable identity for a ranking row — used as a Map/Set key for
+// drafted-status tracking (auto-matched picks, manual overrides, target
+// stars). Deliberately excludes rank: rankings get re-tiered/reordered as
+// news breaks, and a rank-based key would silently orphan every star and
+// manual mark a user set before their last edit to the sheet.
 export function rowKey(row) {
-  return `${row.rank}|${normalizeName(row.name)}|${row.pos}`;
+  return `${normalizeName(row.name)}|${row.pos}`;
 }
 
 // Given a Sleeper pick object, returns the matching ranking row (or null).
