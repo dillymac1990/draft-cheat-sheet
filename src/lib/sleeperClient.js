@@ -25,13 +25,6 @@ export async function fetchLeague(leagueId) {
   return get(`league/${leagueId}`);
 }
 
-// {matchKey: adp} — our own server route, not the /api/sleeper proxy.
-export async function fetchAdp() {
-  const res = await fetch("/api/adp", { cache: "no-store" });
-  if (!res.ok) throw new Error(`ADP fetch failed: ${res.status}`);
-  return res.json();
-}
-
 // Accepts either a league id or a draft id (a solo/mock draft has its own
 // draft_id that isn't listed under any league's /drafts endpoint, so it
 // can't be "resolved" the normal way — it has to be hit directly). Tries

@@ -1,14 +1,14 @@
-// Parses a rankings CSV into [{rank, name, pos, team, tier, bye}].
+// Parses a rankings CSV into [{rank, name, pos, team, tier, bye, adp}].
 // Accepts a flexible header (Rank/Overall/Ovr, Name/Player, Pos/Position,
-// Team/Tm, Tier, Bye/ByeWeek — case-insensitive) so exports from most
-// ranking sites work without reformatting. Falls back to a fixed
-// rank,name,pos,team[,tier[,bye]] column order when no recognizable header
-// row is present.
+// Team/Tm, Tier, Bye/ByeWeek, ADP/Sleeper ADP — case-insensitive) so
+// exports from most ranking sites work without reformatting. Falls back to
+// a fixed rank,name,pos,team[,tier[,bye]] column order when no recognizable
+// header row is present.
 const HEADER_ALIASES = {
-  rank: "rank",
   overall: "rank",
   ovr: "rank",
   rk: "rank",
+  rank: "rank",
   name: "name",
   player: "name",
   playername: "name",
@@ -20,7 +20,15 @@ const HEADER_ALIASES = {
   tier: "tier",
   bye: "bye",
   byeweek: "bye",
+  adp: "adp",
+  sleeperadp: "adp",
 };
+
+// A bare "Rank" column is ambiguous with sheets that also have a separate
+// position-rank column (e.g. "Ovr, Player, Pos, Rank, Tier" where "Rank" is
+// really position rank) — so it only fills the overall-rank slot when a
+// more specific alias (Overall/Ovr/Rk) hasn't already claimed it.
+const AMBIGUOUS_RANK_ALIASES = new Set(["rank"]);
 
 function splitLine(line) {
   // Minimal CSV split: handles quoted fields containing commas.
@@ -68,7 +76,10 @@ export function parseRankingsCsv(text) {
   const firstCells = splitLine(lines[0]).map((c) => c.toLowerCase().replace(/[^a-z]/g, ""));
   const colMap = {};
   firstCells.forEach((cell, i) => {
-    if (HEADER_ALIASES[cell]) colMap[HEADER_ALIASES[cell]] = i;
+    const field = HEADER_ALIASES[cell];
+    if (!field) return;
+    if (field === "rank" && AMBIGUOUS_RANK_ALIASES.has(cell) && colMap.rank != null) return;
+    colMap[field] = i;
   });
   const hasHeader = colMap.name != null;
 
@@ -96,6 +107,7 @@ export function parseRankingsCsv(text) {
       team: colMap.team != null ? (cells[colMap.team] || "").trim().toUpperCase() : "",
       tier: colMap.tier != null && cells[colMap.tier] !== "" ? Number(cells[colMap.tier]) || cells[colMap.tier] : null,
       bye: colMap.bye != null && cells[colMap.bye] !== "" ? Number(cells[colMap.bye]) || null : null,
+      adp: colMap.adp != null && cells[colMap.adp] !== "" ? Number(cells[colMap.adp]) : null,
     });
   });
 

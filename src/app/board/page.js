@@ -4,7 +4,7 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Settings, ChevronDown, ChevronUp, AlertTriangle, Star } from "lucide-react";
 import { loadJSON, saveJSON } from "@/lib/storage";
-import { buildRankingsIndex, matchPick, rowKey, matchKey } from "@/lib/matchPlayer";
+import { buildRankingsIndex, matchPick, rowKey } from "@/lib/matchPlayer";
 import { POS_COLOR, POS_ORDER } from "@/lib/posColors";
 import {
   resolveLeagueAndDraft,
@@ -12,7 +12,6 @@ import {
   fetchPicks,
   fetchLeagueUsers,
   fetchLeagueRosters,
-  fetchAdp,
   buildRosterIndex,
   rosterIdForPick,
   pickRosterId,
@@ -32,7 +31,6 @@ export default function BoardPage() {
   const [myRosterId, setMyRosterId] = useState("");
   const [manualOverrides, setManualOverrides] = useState(() => new Set());
   const [targets, setTargets] = useState(() => new Set());
-  const [adpIndex, setAdpIndex] = useState({});
   const [loadError, setLoadError] = useState("");
 
   const [search, setSearch] = useState("");
@@ -48,15 +46,6 @@ export default function BoardPage() {
     setMyRosterId(loadJSON("myRosterId", ""));
     setManualOverrides(new Set(loadJSON("manualOverrides", [])));
     setTargets(new Set(loadJSON("targets", [])));
-  }, []);
-
-  // --- Real ADP from FantasyFootballCalculator (Sleeper doesn't publish
-  // its own ADP anywhere accessible outside a logged-in draft room). One-
-  // shot fetch; doesn't change during a draft session. ---
-  useEffect(() => {
-    fetchAdp()
-      .then(setAdpIndex)
-      .catch(() => {}); // non-critical — column just shows "—" if this fails
   }, []);
 
   // --- Resolve league/draft id -> draft id, users/rosters. Accepts either
@@ -360,7 +349,7 @@ export default function BoardPage() {
           <p className="text-[11px] text-slate-600 mb-2">
             <span className="text-rose-400 font-semibold">ADP</span> column red = the field drafts them earlier than
             you do (heads up) · <span className="text-emerald-400 font-semibold">green</span> = later than you do
-            (possible value). Real average draft position from FantasyFootballCalculator.
+            (possible value). From your rankings sheet's ADP column.
           </p>
 
           <div className="border border-slate-800 rounded-lg overflow-hidden">
@@ -372,13 +361,9 @@ export default function BoardPage() {
                     <th className="text-left font-semibold px-3 py-2 w-12">#</th>
                     <th className="text-left font-semibold px-3 py-2">Player</th>
                     <th className="text-left font-semibold px-3 py-2 w-16">Tier</th>
-                    <th
-                      className="text-left font-semibold px-3 py-2 w-16"
-                      title="Real average draft position from FantasyFootballCalculator, scoped to this league's format."
-                    >
+                    <th className="text-left font-semibold px-3 py-2 w-16" title="ADP from your rankings sheet.">
                       ADP
                     </th>
-                    <th className="text-right font-semibold px-3 py-2">Status</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -389,7 +374,7 @@ export default function BoardPage() {
                       <Fragment key={key}>
                         {showTierHeader && (
                           <tr className="bg-slate-800/60">
-                            <td colSpan={6} className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                            <td colSpan={5} className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">
                               Tier {r.tier}
                               <span className="ml-1.5 text-slate-600 font-normal normal-case">
                                 · {tierCounts[r.tier]} player{tierCounts[r.tier] === 1 ? "" : "s"}
@@ -402,7 +387,6 @@ export default function BoardPage() {
                           draftedInfo={draftedInfo.get(key)}
                           manual={manualOverrides.has(key)}
                           isTarget={targets.has(key)}
-                          adp={adpIndex[matchKey(r.name, r.pos, r.team)]}
                           isMine={
                             draftedInfo.get(key)?.rosterId != null && String(draftedInfo.get(key).rosterId) === String(myRosterId)
                           }
@@ -414,7 +398,7 @@ export default function BoardPage() {
                   })}
                   {filtered.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="text-center text-slate-600 text-xs py-8">
+                      <td colSpan={5} className="text-center text-slate-600 text-xs py-8">
                         No players match.
                       </td>
                     </tr>
@@ -516,7 +500,8 @@ function StatusPill({ draft, draftComplete }) {
   return <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-1 rounded-md ${style}`}>{label}</span>;
 }
 
-function PlayerRow({ row, draftedInfo, manual, isTarget, adp, isMine, onToggle, onToggleTarget }) {
+function PlayerRow({ row, draftedInfo, manual, isTarget, isMine, onToggle, onToggleTarget }) {
+  const adp = row.adp;
   const drafted = Boolean(draftedInfo || manual);
   const bgClass = drafted
     ? isMine
@@ -555,20 +540,10 @@ function PlayerRow({ row, draftedInfo, manual, isTarget, adp, isMine, onToggle, 
       <td className="px-3 py-2 font-mono">
         {adp != null ? (
           <span className={adp < row.rank ? "text-rose-400" : adp > row.rank ? "text-emerald-400" : "text-slate-500"}>
-            {adp.toFixed(1)}
+            {adp}
           </span>
         ) : (
           <span className="text-slate-700">—</span>
-        )}
-      </td>
-      <td className="px-3 py-2 text-right">
-        {drafted ? (
-          <span className={`text-[10px] font-semibold ${isMine ? "text-emerald-400" : "text-slate-500"}`}>
-            {draftedInfo ? `R${draftedInfo.round}.${draftedInfo.pickNo} · ${draftedInfo.teamName}` : "Drafted"}
-            {isMine ? " · MINE" : ""}
-          </span>
-        ) : (
-          <span className="text-[10px] text-slate-700">Available</span>
         )}
       </td>
     </tr>
